@@ -3995,11 +3995,20 @@ async function testAndSaveUrl() {
   const inp = document.getElementById('sheets-url-inp');
   const url = (inp?.value || '').trim();
   if (!url) { setConnStatus('err', 'Please enter your Apps Script Web App URL'); return; }
-  if (!url.includes('script.google.com')) { setConnStatus('err', 'URL must be a Google Apps Script URL'); return; }
+  if (!url.includes('script.google.com')) {
+    setConnStatus('err', '❌ This looks like a Google Sheets URL. You need the Apps Script Web App URL — go to Extensions → Apps Script → Deploy → Manage Deployments → copy the Web App URL');
+    return;
+  }
+
+  // Warn about domain-restricted URLs
+  if (url.includes('/a/macros/')) {
+    setConnStatus('err', '⚠️ Your URL contains "/a/macros/" which is domain-restricted. Please redeploy with Who has access: Anyone (not "Anyone with Google account") and use the new URL.');
+    return;
+  }
 
   const btn = document.getElementById('connect-btn');
   if (btn) { btn.textContent = 'Testing…'; btn.disabled = true; }
-  setConnStatus('loading', 'Connecting to Google Sheets…');
+  setConnStatus('loading', '🔄 Connecting to Google Sheets…');
 
   try {
     const data = await fetchSheetsData(url);
@@ -4009,12 +4018,26 @@ async function testAndSaveUrl() {
     localStorage.setItem(LS_DATA_KEY, JSON.stringify(data));
     localStorage.setItem(LS_TS_KEY, Date.now().toString());
 
+    const campCount = (data.data?.campaigns||[]).length;
+    const projCount = Object.keys(data.data?.projects||{}).length;
+
     applyLiveData(data.data || data);
-    setConnStatus('ok', '✓ Connected! ' + ((data.data?.campaigns||[]).length) + ' campaigns loaded from Google Sheets.');
+    setConnStatus('ok', `✓ Connected! ${campCount} campaigns · ${projCount} projects loaded.`);
+    updateConnBanner(url);
+    updateTestLinks(url);
+    updateCacheInfo();
     updateDataBadge(true);
-    setTimeout(closeConnectModal, 2200);
+    setTimeout(closeConnectModal, 2000);
+
   } catch (err) {
-    setConnStatus('err', 'Connection failed: ' + (err.message || 'check your URL and redeploy'));
+    const msg = err.message || '';
+    let hint = '';
+    if (msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('cors') || msg.toLowerCase().includes('network')) {
+      hint = '\n\n🔧 Fix: In Apps Script → Deploy → Manage Deployments → Edit → set "Who has access: Anyone" → Deploy → paste the new URL here.\n\nAlso test the URL directly in a new browser tab — it should return JSON, not a login page.';
+    } else if (msg.toLowerCase().includes('login') || msg.toLowerCase().includes('auth')) {
+      hint = '\n\n🔧 Fix: Redeploy with "Who has access: Anyone" (no login required).';
+    }
+    setConnStatus('err', '❌ ' + msg + hint);
   }
 
   if (btn) { btn.textContent = 'Connect'; btn.disabled = false; }
