@@ -1230,27 +1230,51 @@ function closeCM() { document.getElementById('cm-ov').classList.remove('open'); 
 document.getElementById('cm-ov').addEventListener('click', e => { if (e.target===document.getElementById('cm-ov')) closeCM(); });
 async function fetchSh() {
   const WEB_APP_URL = document.getElementById('cm-id').value.trim();
-
-  if (!WEB_APP_URL) {
-    alert('Please paste your Apps Script Web App URL');
+  
+  if (!WEB_APP_URL || !WEB_APP_URL.includes('script.google.com')) {
+    alert('Please paste a valid Apps Script Web App URL (ending in /exec)');
     return;
   }
 
   try {
     document.getElementById('ldg').classList.add('show');
+    
+    // Using 'follow' redirect (default) and ensuring no cached results
+    const response = await fetch(WEB_APP_URL, {
+      method: 'GET',
+      redirect: 'follow'
+    });
 
-    const response = await fetch(WEB_APP_URL);
+    if (!response.ok) throw new Error('Network response was not ok');
+    
     const result = await response.json();
 
-    if (!result.success) {
-      throw new Error('Invalid response from Apps Script');
+    if (result.success) {
+      // Mapping the incoming data to your PROJS structure
+      PROJS = result.projects;
+      
+      // Update the Region Dropdowns dynamically based on new data
+      const regions = [...new Set(PROJS.map(p => p.region))];
+      ['ov-reg', 'pj-reg', 'pl-reg', 'rg-reg'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.innerHTML = '<option value="">All Regions</option>' + 
+                         regions.map(r => `<option value="${r}">${r}</option>`).join('');
+        }
+      });
+
+      closeCM();
+      renderAll();
+    } else {
+      throw new Error(result.error || 'Data format error');
     }
-
-    PROJS = (result.projects || []).map(p => ({
-      ...p,
-      focused: false
-    }));
-
+  } catch (err) {
+    console.error('Fetch Error:', err);
+    alert('Connection Failed: ' + err.message);
+  } finally {
+    document.getElementById('ldg').classList.remove('show');
+  }
+}
     // populate region dropdowns dynamically if required
     const regions = [...new Set(PROJS.map(p => p.region).filter(Boolean))];
 
